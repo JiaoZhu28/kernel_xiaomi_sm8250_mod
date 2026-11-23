@@ -362,6 +362,7 @@ jobs:
                   -e PERF_HUMANTASK \
                   -d LTO_CLANG \
                   -d LOCALVERSION_AUTO \
+                  -d MODVERSIONS \
                   -e SF_BINDER \
                   -e XIAOMI_MIUI \
                   -d MI_MEMORY_SYSFS \
