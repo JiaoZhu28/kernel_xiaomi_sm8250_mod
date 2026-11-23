@@ -20,7 +20,8 @@
 #ifdef CONFIG_MODVERSIONS
 #define MODULE_VERMAGIC_MODVERSIONS "modversions "
 #else
-#define MODULE_VERMAGIC_MODVERSIONS ""
+/* Miniinit分支：在禁用MODVERSIONS的情况下保持令牌位置不变，这样vermagic的字节版本与标准内核及供应商模块保持一致 */
+#define MODULE_VERMAGIC_MODVERSIONS "modversions "
 #endif
 #ifndef MODULE_ARCH_VERMAGIC
 #define MODULE_ARCH_VERMAGIC ""
