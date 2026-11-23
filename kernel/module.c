@@ -3096,6 +3096,27 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 	const char *modmagic = get_modinfo(info, "vermagic");
 	int err;
 
+	/*
+	 * Miniinit fork: 一律拒绝加载外部模块。
+	 *
+	 * 本内核已内置全部所需驱动（CONFIG_WLAN / CNSS2 / DRM / touch /
+	 * techpack audio / NFC / BT 等），实测零模块状态下显示、WiFi、
+	 * 音频、相机、传感器、NFC、蓝牙均正常。
+	 *
+	 * 而设备 /vendor/lib/modules 下的 41 个 .ko 是按原厂 4.19.157 源码
+	 * 编译的，与本树（4.19.325）结构体布局、宏、寄存器约定均不同。
+	 * 虽然可通过 vermagic 校验并完成加载，但初始化阶段会因 ABI 差异
+	 * 触发 kernel panic（实测：boot_completed 前反复重启，adb 仅存活
+	 * 3~10 秒）。
+	 *
+	 * 在加载入口直接返回 -ENOEXEC，使 UTS_RELEASE 可以保持与原厂
+	 * 逐字节一致（4.19.157-perf-g35fcd5da188a），无需靠改版本串让
+	 * 模块"自然加载失败"，伪装更彻底，也没有编译期 hack。
+	 */
+	pr_info("%s: external module loading is disabled by this kernel build\n",
+		info->name);
+	return -ENOEXEC;
+
 	if (flags & MODULE_INIT_IGNORE_VERMAGIC)
 		modmagic = NULL;
 
