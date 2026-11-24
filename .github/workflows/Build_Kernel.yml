@@ -406,7 +406,9 @@ jobs:
           elif [ "$KSU" == "KernelSU" ]; then
               echo "🔧 Applying KernelSU Configuration... (应用 KernelSU 配置)"
               scripts/config --file out/.config \
-                  -e KSU
+                  -e KSU \
+                  -d KPROBES \
+                  -d HAVE_KPROBES
           fi
             
           # 判断KPM是否启用并开启相关配置
