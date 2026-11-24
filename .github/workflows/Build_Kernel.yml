@@ -218,6 +218,10 @@ jobs:
           
           # 设置环境变量
           export PATH="$TOOLCHAIN_DIR/clang/bin:$PATH"
+          export KBUILD_BUILD_USER="builder"
+          export KBUILD_BUILD_HOST="pangu-build-component-vendor-143272-x2wl3-5m0sh-jc0s1"
+          export KBUILD_BUILD_VERSION="1"
+          export KBUILD_BUILD_TIMESTAMP="Mon Aug 28 14:57:53 UTC 2023"
           
           # 定义构建参数
           MAKE_ARGS="ARCH=arm64 SUBARCH=arm64 LLVM=1 LLVM_IAS=1 \
