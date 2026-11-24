@@ -205,7 +205,7 @@ jobs:
           elif [ "$KSU_VARIANT" == "RKSU" ]; then
             curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/susfs-v1.5.5/kernel/setup.sh" | bash -s susfs-v1.5.5
           elif [ "$KSU_VARIANT" == "KernelSU" ]; then
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s
           else
             echo "KernelSU Disabled (KernelSU 已禁用)"
           fi
@@ -407,6 +407,7 @@ jobs:
               echo "🔧 Applying KernelSU Configuration... (应用 KernelSU 配置)"
               scripts/config --file out/.config \
                   -e KSU \
+                  -e KSU_MANUAL_HOOK \
                   -d KPROBES \
                   -d HAVE_KPROBES
           fi
