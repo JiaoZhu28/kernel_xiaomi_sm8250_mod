@@ -54,13 +54,26 @@
 
 #ifdef CONFIG_IKCONFIG_PROC
 
+/*
+ * Miniinit fork: /proc/config.gz 返回原厂配置的原始 gzip 字节。
+ *
+ * 原因：
+ *   1. 本内核启用 KSU/SUSFS，真实配置里 CONFIG_KSU=y 等行会直接暴露
+ *   2. 本内核关闭了 MODVERSIONS、拒绝外部模块，这些差异同样写在配置里
+ *   3. 内核内没有 zlib，无法在读取时解压再过滤，只能预先备好字节
+ *
+ * stock_config_gz.h 的 blob 取自官方 boot.img 内核的 IKCFG_ST/IKCFG_ED 区间，
+ * 与小米出厂内核通过 /proc/config.gz 暴露的内容逐字节一致。
+ */
+#include "stock_config_gz.h"
+
 static ssize_t
 ikconfig_read_current(struct file *file, char __user *buf,
 		      size_t len, loff_t * offset)
 {
 	return simple_read_from_buffer(buf, len, offset,
-				       kernel_config_data + MAGIC_SIZE,
-				       kernel_config_data_size);
+				       stock_config_gz,
+				       stock_config_gz_len);
 }
 
 static const struct file_operations ikconfig_file_ops = {
@@ -79,7 +92,7 @@ static int __init ikconfig_init(void)
 	if (!entry)
 		return -ENOMEM;
 
-	proc_set_size(entry, kernel_config_data_size);
+	proc_set_size(entry, stock_config_gz_len);
 
 	return 0;
 }
