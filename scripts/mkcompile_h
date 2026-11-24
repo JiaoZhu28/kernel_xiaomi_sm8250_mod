@@ -73,9 +73,10 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
   echo \#define LINUX_COMPILE_BY \"`echo $LINUX_COMPILE_BY | $UTS_TRUNCATE`\"
   echo \#define LINUX_COMPILE_HOST \"`echo $LINUX_COMPILE_HOST | $UTS_TRUNCATE`\"
 
-  LD_VERSION=$($LD -v | head -n1 | sed 's/(compatible with [^)]*)//' \
-		      | sed 's/[[:space:]]*$//')
-  printf '#define LINUX_COMPILER "%s"\n' "$CC_VERSION, $LD_VERSION"
+  # Miniinit fork: 固定编译者信息，使 /proc/version 与原厂逐字节一致
+  CC_VERSION_FAKE="clang version 10.0.7 for Android NDK"
+  LD_VERSION_FAKE="GNU ld (binutils-2.27-bd24d23f) 2.27.0.20170315"
+  printf '#define LINUX_COMPILER "%s"\n' "$CC_VERSION_FAKE, $LD_VERSION_FAKE"
 ) > .tmpcompile
 
 # Only replace the real compile.h if the new one is different,
