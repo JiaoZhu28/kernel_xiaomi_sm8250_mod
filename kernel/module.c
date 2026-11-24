@@ -30,6 +30,7 @@
 #include <linux/vmalloc.h>
 #include <linux/elf.h>
 #include <linux/proc_fs.h>
+#include "stock_modules.h"
 #include <linux/security.h>
 #include <linux/seq_file.h>
 #include <linux/syscalls.h>
@@ -4385,9 +4386,40 @@ static const struct file_operations proc_modules_operations = {
 	.release	= seq_release,
 };
 
+/*
+ * Miniinit fork: /proc/modules 返回原厂快照。
+ *
+ * 本内核拒绝加载任何外部模块（check_modinfo 直接 -ENOEXEC），因此真实的
+ * /proc/modules 恒为空。而原厂内核在运行期会加载 33 个 .ko，空列表本身
+ * 就是"内核被换过"的明显特征。
+ *
+ * 这里用一个固定内容的 seq_file 替代原来的模块列表遍历：
+ *   - 内容为原厂内核 cat /proc/modules 的逐行快照（stock_modules.h）
+ *   - 不动真实的模块链表，不影响内核内部逻辑
+ *   - 只在 shell / 取证层面可见（App 域无 proc_modules 读权限）
+ */
+static int stock_modules_show(struct seq_file *m, void *v)
+{
+	seq_puts(m, stock_modules_txt);
+	return 0;
+}
+
+static int stock_modules_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, stock_modules_show, NULL);
+}
+
+static const struct file_operations stock_modules_fops = {
+	.owner	 = THIS_MODULE,
+	.open	 = stock_modules_open,
+	.read	 = seq_read,
+	.llseek	 = seq_lseek,
+	.release = single_release,
+};
+
 static int __init proc_modules_init(void)
 {
-	proc_create("modules", 0, NULL, &proc_modules_operations);
+	proc_create("modules", 0, NULL, &stock_modules_fops);
 	return 0;
 }
 module_init(proc_modules_init);
