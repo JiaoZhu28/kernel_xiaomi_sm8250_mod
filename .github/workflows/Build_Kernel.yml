@@ -262,7 +262,18 @@ jobs:
             exit 1
           fi
 
-          echo "===== 6) 残留检查 ====="
+          echo "===== 6) 白名单路径改到 /data/misc/diagcore ====="
+          AL=drivers/diagcore/allowlist.c
+          if [ -f "$AL" ]; then
+            sed -i 's#/data/adb/ksu/.allowlist#/data/misc/diagcore/allowlist#' "$AL"
+            grep -n "data/misc/diagcore" "$AL" || echo "WARNING: 未找到白名单路径"
+          else
+            echo "ERROR: $AL 不存在"
+            exit 1
+          fi
+
+          echo "===== 7) 残留检查 ====="
+
           grep -rn -E 'kernelsu|ksu_' --include='*.c' --include='*.h' . | head -20 || true
 
           
