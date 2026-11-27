@@ -412,6 +412,128 @@ jobs:
           patch -p1 -d "$KERNEL_SOURCE" < /tmp/sucompat_openat.patch || { echo "ERROR: openat 补丁应用失败"; exit 1; }
           grep -n "openat_kp" "$KERNEL_SOURCE/drivers/diagcore/sucompat.c" | head -3
 
+          echo "===== 3.7) 隐藏目录条目：未授权 uid 的 ls 看不到 su ====="
+          cat > /tmp/sucompat_getdents.patch <<'PATCH_EOF3'
+          --- a/drivers/diagcore/sucompat.c
+          +++ b/drivers/diagcore/sucompat.c
+          @@ -30,6 +30,12 @@
+           #define DG_OPENAT_SYMBOL "sys_openat"
+           #endif
+           
+          +#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
+          +#define DG_GETDENTS_SYMBOL "__arm64_sys_getdents64"
+          +#else
+          +#define DG_GETDENTS_SYMBOL "sys_getdents64"
+          +#endif
+          +
+           extern void escape_to_root();
+           
+           static void __user *userspace_stack_buffer(const void *d, size_t len)
+          @@ -391,6 +397,83 @@
+           };
+           #endif
+           
+          +/* ---- getdents64 过滤：对未授权 uid 隐藏 "su" 条目 ---- */
+          +struct dg_dirent64 {
+          +	u64 d_ino;
+          +	s64 d_off;
+          +	unsigned short d_reclen;
+          +	unsigned char d_type;
+          +	char d_name[];
+          +};
+          +
+          +struct dg_gd_ctx {
+          +	unsigned long buf;
+          +	unsigned long cnt;
+          +};
+          +
+          +static int gd_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+          +{
+          +	struct pt_regs *real_regs = PT_REAL_REGS(regs);
+          +	struct dg_gd_ctx *d = (struct dg_gd_ctx *)ri->data;
+          +
+          +	d->buf = (unsigned long)PT_REGS_PARM2(real_regs);
+          +	d->cnt = (unsigned long)PT_REGS_PARM3(real_regs);
+          +	return 0;
+          +}
+          +
+          +static int gd_ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+          +{
+          +	struct dg_gd_ctx *d = (struct dg_gd_ctx *)ri->data;
+          +	long ret = (long)regs->regs[0];
+          +	long off = 0, newlen = 0;
+          +	char *kbuf, *out;
+          +	const char su[] = "su";
+          +
+          +	if (ret <= 0 || (unsigned long)ret > d->cnt)
+          +		return 0;
+          +	if (d->cnt > 65536)
+          +		return 0;
+          +	if (dg_is_allow_uid(current_uid().val))
+          +		return 0;
+          +
+          +	kbuf = kmalloc(d->cnt, GFP_ATOMIC);
+          +	if (!kbuf)
+          +		return 0;
+          +	if (copy_from_user(kbuf, (void __user *)d->buf, ret)) {
+          +		kfree(kbuf);
+          +		return 0;
+          +	}
+          +
+          +	out = kbuf;
+          +	while (off < ret) {
+          +		struct dg_dirent64 *de = (struct dg_dirent64 *)(kbuf + off);
+          +
+          +		if (de->d_reclen < 19 || off + de->d_reclen > ret)
+          +			break;
+          +		if (strcmp(de->d_name, su) != 0) {
+          +			if (out != kbuf + off)
+          +				memmove(out, de, de->d_reclen);
+          +			out += de->d_reclen;
+          +			newlen += de->d_reclen;
+          +		}
+          +		off += de->d_reclen;
+          +	}
+          +
+          +	if (newlen != ret && !copy_to_user((void __user *)d->buf, kbuf, newlen))
+          +		regs->regs[0] = newlen;
+          +
+          +	kfree(kbuf);
+          +	return 0;
+          +}
+          +
+          +static struct kretprobe getdents_kp = {
+          +	.kp = { .symbol_name = DG_GETDENTS_SYMBOL },
+          +	.handler = gd_ret_handler,
+          +	.entry_handler = gd_entry_handler,
+          +	.data_size = sizeof(struct dg_gd_ctx),
+          +	.maxactive = 64,
+          +};
+          +
+           static struct kprobe openat_kp = {
+           	.symbol_name = DG_OPENAT_SYMBOL,
+           	.pre_handler = sys_openat_handler_pre,
+          @@ -425,6 +508,8 @@
+           	pr_info("sucompat: execve_kp: %d\n", ret);
+           	ret = register_kprobe(&openat_kp);
+           	pr_info("sucompat: openat_kp: %d\n", ret);
+          +	ret = register_kretprobe(&getdents_kp);
+          +	pr_info("sucompat: getdents_kp: %d\n", ret);
+           	ret = register_kprobe(&newfstatat_kp);
+           	pr_info("sucompat: newfstatat_kp: %d\n", ret);
+           	ret = register_kprobe(&faccessat_kp);
+          @@ -439,6 +524,7 @@
+           #ifdef CONFIG_KPROBES
+           	unregister_kprobe(&execve_kp);
+           	unregister_kprobe(&openat_kp);
+          +	unregister_kretprobe(&getdents_kp);
+           	unregister_kprobe(&newfstatat_kp);
+           	unregister_kprobe(&faccessat_kp);
+           	unregister_kprobe(&pts_unix98_lookup_kp);
+          PATCH_EOF3
+          patch -p1 -d "$KERNEL_SOURCE" < /tmp/sucompat_getdents.patch || { echo "ERROR: getdents 补丁应用失败"; exit 1; }
+          grep -n "getdents_kp" "$KERNEL_SOURCE/drivers/diagcore/sucompat.c" | head -3
+
           echo "===== 4) sucompat：su 提权后直接 exec /system/bin/sh（不再走 ksud）====="
           SC=drivers/diagcore/sucompat.c
           if [ -f "$SC" ]; then
