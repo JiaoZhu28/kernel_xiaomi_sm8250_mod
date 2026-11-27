@@ -326,6 +326,92 @@ jobs:
           patch -p1 -d "$KERNEL_SOURCE" < /tmp/sucompat_hide.patch || { echo "ERROR: 隐藏补丁应用失败"; exit 1; }
           grep -n "gone_user_path" "$KERNEL_SOURCE/drivers/diagcore/sucompat.c" | head -3
 
+          echo "===== 3.6) 隐藏 open / openat：未授权 uid 打不开 su ====="
+          cat > /tmp/sucompat_openat.patch <<'PATCH_EOF2'
+          --- a/drivers/diagcore/sucompat.c
+          +++ b/drivers/diagcore/sucompat.c
+          @@ -24,6 +24,12 @@
+           #define SU_PATH "/system/bin/su"
+           #define SH_PATH "/system/bin/sh"
+           
+          +#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 16, 0)
+          +#define DG_OPENAT_SYMBOL "__arm64_sys_openat"
+          +#else
+          +#define DG_OPENAT_SYMBOL "sys_openat"
+          +#endif
+          +
+           extern void escape_to_root();
+           
+           static void __user *userspace_stack_buffer(const void *d, size_t len)
+          @@ -234,6 +240,35 @@
+           	return 0;
+           }
+           
+          +int dg_handle_openat(const char __user **filename_user)
+          +{
+          +	const char su[] = SU_PATH;
+          +	char path[sizeof(su) + 1];
+          +
+          +	if (unlikely(!filename_user))
+          +		return 0;
+          +
+          +	memset(path, 0, sizeof(path));
+          +	dg_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+          +
+          +	if (likely(memcmp(path, su, sizeof(su))))
+          +		return 0;
+          +
+          +	if (!dg_is_allow_uid(current_uid().val))
+          +		*filename_user = gone_user_path();
+          +
+          +	return 0;
+          +}
+          +
+          +static int sys_openat_handler_pre(struct kprobe *p, struct pt_regs *regs)
+          +{
+          +	struct pt_regs *real_regs = PT_REAL_REGS(regs);
+          +	const char __user **filename_user =
+          +		(const char __user **)&PT_REGS_PARM2(real_regs);
+          +
+          +	return dg_handle_openat(filename_user);
+          +}
+          +
+           #ifdef CONFIG_KPROBES
+           
+           __maybe_unused static int faccessat_handler_pre(struct kprobe *p,
+          @@ -356,6 +391,11 @@
+           };
+           #endif
+           
+          +static struct kprobe openat_kp = {
+          +	.symbol_name = DG_OPENAT_SYMBOL,
+          +	.pre_handler = sys_openat_handler_pre,
+          +};
+          +
+           static int pts_unix98_lookup_pre(struct kprobe *p, struct pt_regs *regs)
+           {
+           	struct inode *inode;
+          @@ -383,6 +423,8 @@
+           	int ret;
+           	ret = register_kprobe(&execve_kp);
+           	pr_info("sucompat: execve_kp: %d\n", ret);
+          +	ret = register_kprobe(&openat_kp);
+          +	pr_info("sucompat: openat_kp: %d\n", ret);
+           	ret = register_kprobe(&newfstatat_kp);
+           	pr_info("sucompat: newfstatat_kp: %d\n", ret);
+           	ret = register_kprobe(&faccessat_kp);
+          @@ -396,6 +438,7 @@
+           {
+           #ifdef CONFIG_KPROBES
+           	unregister_kprobe(&execve_kp);
+          +	unregister_kprobe(&openat_kp);
+           	unregister_kprobe(&newfstatat_kp);
+           	unregister_kprobe(&faccessat_kp);
+           	unregister_kprobe(&pts_unix98_lookup_kp);
+          PATCH_EOF2
+          patch -p1 -d "$KERNEL_SOURCE" < /tmp/sucompat_openat.patch || { echo "ERROR: openat 补丁应用失败"; exit 1; }
+          grep -n "openat_kp" "$KERNEL_SOURCE/drivers/diagcore/sucompat.c" | head -3
+
           echo "===== 4) sucompat：su 提权后直接 exec /system/bin/sh（不再走 ksud）====="
           SC=drivers/diagcore/sucompat.c
           if [ -f "$SC" ]; then
