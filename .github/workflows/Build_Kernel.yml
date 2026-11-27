@@ -212,19 +212,18 @@ jobs:
           
           echo "✅ KernelSU configuration complete (KernelSU 配置完成)"
 
-      - name: 🩹 Patch KernelSU Names (改名，去 ksu 特征)
+            - name: 🩹 Patch KernelSU Names (改名，去 ksu 特征)
         if: ${{ github.event.inputs.kernelsu_variant == 'KernelSU' }}
         run: |
           cd "$KERNEL_SOURCE"
 
-          echo "===== 1) 源码内改名 ====="
-          for f in $(grep -rl -E 'kernelsu|KernelSU|ksu_|ksud' \
+          echo "===== 1) 源码内改名（不碰 ksud，避免 include 断裂）====="
+          for f in $(grep -rl -E 'kernelsu|KernelSU|ksu_' \
                      --include='*.c' --include='*.h' --include='Kconfig' --include='Makefile' .); do
             sed -i \
               -e 's/kernelsu/diagcore/g' \
               -e 's/KernelSU/DIAGCORE/g' \
               -e 's/ksu_/dg_/g' \
-              -e 's/ksud/dgd/g' \
               "$f"
           done
 
@@ -233,11 +232,10 @@ jobs:
             mv drivers/kernelsu drivers/diagcore
             echo "renamed drivers/kernelsu -> drivers/diagcore"
           fi
-          echo "--- drivers/Makefile 相关行 ---"
           grep -n "diagcore" drivers/Makefile drivers/Kconfig || true
 
-          echo "===== 3) 残留检查（应为 none）====="
-          grep -rn -E 'kernelsu|\bksu_|\bksud' --include='*.c' --include='*.h' . | head -20 || echo none
+          echo "===== 3) 残留检查（kernelsu / ksu_ 应为空）====="
+          grep -rn -E 'kernelsu|ksu_' --include='*.c' --include='*.h' . | head -20 || true
 
       - name: 🔨 Build the kernel (构建内核)
         run: |
