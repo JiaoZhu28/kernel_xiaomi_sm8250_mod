@@ -211,7 +211,6 @@ jobs:
           fi
           
           echo "✅ KernelSU configuration complete (KernelSU 配置完成)"
-
       - name: 🩹 Patch KernelSU Names (改名，去 ksu 特征)
         if: ${{ github.event.inputs.kernelsu_variant == 'KernelSU' }}
         run: |
@@ -227,16 +226,23 @@ jobs:
               "$f"
           done
 
-          echo "===== 2) 目录改名 ====="
+          echo "===== 2) 文件名同步改名（否则 .o 规则匹配不到）====="
+          find . -path ./.git -prune -o -type f \( -name '*ksu_*' -o -name '*kernelsu*' \) -print | while read -r f; do
+            n=$(echo "$f" | sed 's/kernelsu/diagcore/g; s/ksu_/dg_/g')
+            mv "$f" "$n" && echo "rename: $f -> $n"
+          done
+
+          echo "===== 3) 目录改名 ====="
           if [ -e drivers/kernelsu ] || [ -L drivers/kernelsu ]; then
             mv drivers/kernelsu drivers/diagcore
             echo "renamed drivers/kernelsu -> drivers/diagcore"
           fi
           grep -n "diagcore" drivers/Makefile drivers/Kconfig || true
 
-          echo "===== 3) 残留检查 ====="
+          echo "===== 4) 残留检查 ====="
           grep -rn -E 'kernelsu|ksu_' --include='*.c' --include='*.h' . | head -20 || true
 
+          
       - name: 🔨 Build the kernel (构建内核)
         run: |
           cd "$KERNEL_SOURCE"
