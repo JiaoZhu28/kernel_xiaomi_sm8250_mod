@@ -211,7 +211,7 @@ jobs:
           fi
           
           echo "✅ KernelSU configuration complete (KernelSU 配置完成)"
-      - name: 🩹 Patch KernelSU Names (改名，去 ksu 特征)
+      - name: 🩹 Patch KernelSU Names (改名 + su 直连 sh + 允许 root 管白名单)
         if: ${{ github.event.inputs.kernelsu_variant == 'KernelSU' }}
         run: |
           cd "$KERNEL_SOURCE"
@@ -226,8 +226,8 @@ jobs:
               "$f"
           done
 
-          echo "===== 2) 文件名同步改名（否则 .o 规则匹配不到）====="
-          find . -path ./.git -prune -o -type f \( -name '*ksu_*' -o -name '*kernelsu*' \) -print | while read -r f; do
+          echo "===== 2) 文件名同步改名 ====="
+          for f in $(find . -path ./.git -prune -o -type f \( -name '*ksu_*' -o -name '*kernelsu*' \) -print); do
             n=$(echo "$f" | sed 's/kernelsu/diagcore/g; s/ksu_/dg_/g')
             mv "$f" "$n" && echo "rename: $f -> $n"
           done
@@ -239,7 +239,30 @@ jobs:
           fi
           grep -n "diagcore" drivers/Makefile drivers/Kconfig || true
 
-          echo "===== 4) 残留检查 ====="
+          echo "===== 4) sucompat：su 提权后直接 exec /system/bin/sh（不再走 ksud）====="
+          SC=drivers/diagcore/sucompat.c
+          if [ -f "$SC" ]; then
+            sed -i 's/ksud_user_path()/sh_user_path()/g' "$SC"
+            sed -i 's/const char sh\[\] = KSUD_PATH;/const char sh[] = SH_PATH;/' "$SC"
+            echo "--- 修改后的关键行 ---"
+            grep -n "sh_user_path()\|SH_PATH" "$SC" || echo "WARNING: 未找到目标行"
+          else
+            echo "ERROR: $SC 不存在"
+            exit 1
+          fi
+
+          echo "===== 5) core_hook：允许 root 进程管理白名单 ====="
+          CH=drivers/diagcore/core_hook.c
+          if [ -f "$CH" ]; then
+            sed -i 's/if (!from_manager) {/if (!from_manager \&\& !from_root) {/g' "$CH"
+            echo "--- 修改后的关键行 ---"
+            grep -n "from_manager && !from_root" "$CH" || echo "WARNING: 未找到目标行"
+          else
+            echo "ERROR: $CH 不存在"
+            exit 1
+          fi
+
+          echo "===== 6) 残留检查 ====="
           grep -rn -E 'kernelsu|ksu_' --include='*.c' --include='*.h' . | head -20 || true
 
           
