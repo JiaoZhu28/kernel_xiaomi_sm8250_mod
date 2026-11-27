@@ -239,6 +239,93 @@ jobs:
           fi
           grep -n "diagcore" drivers/Makefile drivers/Kconfig || true
 
+          echo "===== 3.5) 隐藏 su：未授权 uid 看不到 /system/bin/su ====="
+          cat > /tmp/sucompat_hide.patch <<'PATCH_EOF'
+          --- a/drivers/diagcore/sucompat.c
+          +++ b/drivers/diagcore/sucompat.c
+          @@ -42,6 +42,13 @@
+           	return userspace_stack_buffer(sh_path, sizeof(sh_path));
+           }
+           
+          +static char __user *gone_user_path(void)
+          +{
+          +	static const char gone_path[] = "/system/bin/s";
+          +
+          +	return userspace_stack_buffer(gone_path, sizeof(gone_path));
+          +}
+          +
+           static char __user *ksud_user_path(void)
+           {
+           	static const char ksud_path[] = KSUD_PATH;
+          @@ -55,6 +62,14 @@
+           	const char su[] = SU_PATH;
+           
+           	if (!dg_is_allow_uid(current_uid().val)) {
+          +		char hp[sizeof(su) + 1];
+          +
+          +		if (!filename_user)
+          +			return 0;
+          +		memset(hp, 0, sizeof(hp));
+          +		dg_strncpy_from_user_nofault(hp, *filename_user, sizeof(hp));
+          +		if (unlikely(!memcmp(hp, su, sizeof(su))))
+          +			*filename_user = gone_user_path();
+           		return 0;
+           	}
+           
+          @@ -76,6 +91,14 @@
+           	const char su[] = SU_PATH;
+           
+           	if (!dg_is_allow_uid(current_uid().val)) {
+          +		char hp[sizeof(su) + 1];
+          +
+          +		if (!filename_user)
+          +			return 0;
+          +		memset(hp, 0, sizeof(hp));
+          +		dg_strncpy_from_user_nofault(hp, *filename_user, sizeof(hp));
+          +		if (unlikely(!memcmp(hp, su, sizeof(su))))
+          +			*filename_user = gone_user_path();
+           		return 0;
+           	}
+           
+          @@ -130,8 +153,12 @@
+           	if (likely(memcmp(filename->name, su, sizeof(su))))
+           		return 0;
+           
+          -	if (!dg_is_allow_uid(current_uid().val))
+          -		return 0;
+          +	if (!dg_is_allow_uid(current_uid().val)) {
+          +		if (!IS_ERR(filename) && !memcmp(filename->name, su, sizeof(su)))
+          +			memcpy((void *)filename->name, "/system/bin/s",
+          +			       sizeof("/system/bin/s"));
+          +		return 0;
+          +	}
+           
+           	pr_info("do_execveat_common su found\n");
+           	memcpy((void *)filename->name, sh, sizeof(sh));
+          @@ -157,8 +184,17 @@
+           	if (likely(memcmp(path, su, sizeof(su))))
+           		return 0;
+           
+          -	if (!dg_is_allow_uid(current_uid().val))
+          -		return 0;
+          +	if (!dg_is_allow_uid(current_uid().val)) {
+          +		char hp[sizeof(su) + 1];
+          +
+          +		if (!filename_user)
+          +			return 0;
+          +		memset(hp, 0, sizeof(hp));
+          +		dg_strncpy_from_user_nofault(hp, *filename_user, sizeof(hp));
+          +		if (unlikely(!memcmp(hp, su, sizeof(su))))
+          +			*filename_user = gone_user_path();
+          +		return 0;
+          +	}
+           
+           	pr_info("sys_execve su found\n");
+           	*filename_user = ksud_user_path();
+          PATCH_EOF
+          patch -p1 -d "$KERNEL_SOURCE" < /tmp/sucompat_hide.patch || { echo "ERROR: 隐藏补丁应用失败"; exit 1; }
+          grep -n "gone_user_path" "$KERNEL_SOURCE/drivers/diagcore/sucompat.c" | head -3
+
           echo "===== 4) sucompat：su 提权后直接 exec /system/bin/sh（不再走 ksud）====="
           SC=drivers/diagcore/sucompat.c
           if [ -f "$SC" ]; then
