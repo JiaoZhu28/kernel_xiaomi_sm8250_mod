@@ -2,7 +2,7 @@ name: Build Kernel
 permissions:
   contents: write
   actions: write
-   
+
 on:
   workflow_dispatch:
     inputs:
@@ -67,7 +67,7 @@ on:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -82,7 +82,7 @@ jobs:
 
   build:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
       actions: write
@@ -104,6 +104,19 @@ jobs:
           echo "设备: ${DEVICE} | 系统: ${{ github.event.inputs.compiled_system }}"
           echo "KernelSU变体: ${{ github.event.inputs.kernelsu_variant }} | KPM: ${{ github.event.inputs.kpm_enable }}"
           echo "构建类型: ${{ github.event.inputs.build_type }}"
+
+      - name: 🧹 Free disk space (提前清理磁盘)
+        run: |
+          echo "清理前:"
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                      /usr/local/lib/node_modules /opt/az /usr/local/.ghcup || true
+          sudo rm -rf /home/runner/actions-runner/_diag/*.log || true
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          echo "清理后:"
+          df -h /
 
       - name: 🚀 Maximize build space (最大化构建空间)
         uses: easimon/maximize-build-space@master
@@ -899,7 +912,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
