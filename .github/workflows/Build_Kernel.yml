@@ -177,32 +177,42 @@ jobs:
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           echo "正在下载编译工具链..."
-          # 创建工具链目录
           mkdir -p "$TOOLCHAIN_DIR/clang"
           mkdir -p "$TOOLCHAIN_DIR/gcc/gcc64"
           mkdir -p "$TOOLCHAIN_DIR/gcc/gcc32"
-          
-          # 下载 Clang
+
           echo "正在下载 Clang..."
           cd "$TOOLCHAIN_DIR/clang"
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang-r547379.tar.gz
+          URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz"
+          ok=0
+          for i in 1 2 3 4 5; do
+            echo "---- 第 $i 次尝试 ----"
+            if wget -q --tries=3 --timeout=180 -O clang-r547379.tar.gz "$URL"; then ok=1; break; fi
+            echo "wget 失败，改用 curl 重试"
+            if curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 -o clang-r547379.tar.gz "$URL"; then ok=1; break; fi
+            sleep 15
+          done
+          if [ "$ok" != "1" ]; then
+            echo "❌ Clang 下载失败（网络问题），请重跑"
+            exit 1
+          fi
+          ls -lh clang-r547379.tar.gz
           tar -xzf clang-r547379.tar.gz
           rm clang-r547379.tar.gz
-          
-          # 下载 GCC
+
           echo "正在下载 GCC工具链..."
           cd "$TOOLCHAIN_DIR/gcc/gcc64"
           git init
           git remote add origin https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git
-          git fetch --depth 1 origin
+          for i in 1 2 3; do git fetch --depth 1 origin && break; echo "gcc64 fetch 重试 $i"; sleep 5; done
           git checkout FETCH_HEAD
-          
+
           cd "$TOOLCHAIN_DIR/gcc/gcc32"
           git init
           git remote add origin https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git
-          git fetch --depth 1 origin
+          for i in 1 2 3; do git fetch --depth 1 origin && break; echo "gcc32 fetch 重试 $i"; sleep 5; done
           git checkout FETCH_HEAD
-          
+
           echo "✅ Toolchain download complete (工具链下载完成)"
 
       - name: ⚙️ Configuring KernelSU (配置 KernelSU)
@@ -982,3 +992,4 @@ jobs:
           4. 重启设备
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
