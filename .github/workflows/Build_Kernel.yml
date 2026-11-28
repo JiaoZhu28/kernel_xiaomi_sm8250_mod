@@ -139,24 +139,6 @@ jobs:
             zlib1g-dev libncurses-dev wget zip cpio python3 python3-pip tree gcc clang lld llvm jq
           echo "✅ Dependency installation complete (依赖安装完成)"
           
-      - name: ⚙️ Configuring ccache (配置 ccache)
-        run: |
-          mkdir -p ~/.cache
-          ccache --version
-          ccache --max-size=4G
-          ccache --set-config=compression=true
-          ccache --zero-stats
-          echo "CCACHE_DIR=$HOME/.cache" >> $GITHUB_ENV
-          
-      - name: 📥 Restore ccache (恢复 ccache 缓存)
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache
-          key: ccache-${{ github.event.inputs.compiled_system }}-${{ hashFiles('**/Makefile') }}
-          restore-keys: |
-            ccache-${{ github.event.inputs.compiled_system }}-
-            ccache-
-            
       - name: 📥 Cloning kernel source code （克隆内核源码）
         run: |
           echo "正在克隆内核源码..."
